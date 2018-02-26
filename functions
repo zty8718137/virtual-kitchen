@@ -1,0 +1,923 @@
+Privileges
+
+#Create a Supervisor and let him have the right to all table in mydb
+select Host,User from mysql.user;
+Drop  User 'SupervisorHHQ'@'localhost';
+Create User 'SupervisorHHQ'@'localhost' identified By 'hqhandsome';
+grant all on mydb.* to 'SupervisorHHQ'@'localhost';
+grant create,show view on mydb to 'SupervisorHHQ'@'localhost';
+show grants for 'SupervisorHHQ'@'localhost' ;
+
+
+#Create a Student and let him have the right to choose game,course and dish and view his or his 
+Drop  User  'StudentJM'@'%';
+Create User 'StudentJM'@'%'identified By'JMLearning';
+Grant update on mydb.account to 'StudentJM'@'%';
+Grant Select,insert,update,delete on mydb.user to 'StudentJM'@'%';
+Grant Select,insert,delete on mydb.friendlist to 'StudentJM'@'%';
+
+Grant select(course_id, course_name, course_difficulty) on mydb.course to 'StudentJM'@'%';
+Grant select(certificate_id, certificate_name) on mydb.certificate to 'StudentJM'@'%';
+Grant select(game_id, dish_id) on mydb.game to 'StudentJM'@'%';
+Grant Select on mydb.accomplishment to 'StudentJM'@'%';
+Grant Select on mydb.enrollment to 'StudentJM'@'%';
+Grant Select on mydb.enrollment to 'StudentJM'@'%';
+revoke all on mydb.* from 'StudentJm'@'%';
+
+
+#Create a Instructer that is in charge of the dish,reminder,recipe 
+Drop  User  'InstructorTY'@'localhost';
+Grant Select,insert,update,delete on mydb.recipe to 'InstructorTY'@'localhost';
+Grant Select,insert,update,delete on mydb.reminder to 'InstructorTY'@'localhost';
+Grant Select,insert,update,delete on mydb.dish to 'InstructorTY'@'localhost';
+
+
+Certificate
+
+#show all certificate
+SELECT 
+    certificate_name, certificate_des
+FROM
+    certificate;
+    
+select course_name from course;
+
+select course_name from course where certificate_certificate_id=1;
+select * from dish;
+select dish_name,course_id,course_difficulty from dish
+ inner join course on course.course_id=dish.course_course_id where course_difficulty in (1,2);
+ 
+#search by difficulty
+select dish_name,difficulty from recipe 
+inner join dish on recipe.dish_dish_id=dish.dish_id where difficulty in (1,2);
+select * from recipe;
+
+#get the course name of a dish
+select course.course_name from course 
+inner join dish on course.course_id=dish.course_course_id 
+where dish_name='spicy beef';
+
+#same function using subquery
+select course_name from course 
+where exists (select course_name from dish 
+where course.course_id=dish.course_course_id and dish_name='spicy beef');
+
+select course.course_name,dish.dish_name,recipe.difficulty from dish
+inner join course on course.course_id=dish.course_course_id
+inner join recipe on dish.dish_id=recipe.dish_dish_id
+where dish_name='spicy beef';
+
+#spicy
+select dish_name,course_name from dish
+inner join course on  course.course_id=dish.course_course_id
+ where dish_name like '%spicy%'
+ and course_difficulty in (1,2);
+ #number of cooking process
+ select * from process;
+ select process.processname,count(dish.dish_id) headcount
+ from dish_has_process
+ inner join process on process.processid=dish_has_process.process_processid
+ inner join dish on dish.dish_id=dish_has_process.dish_dish_id
+ group by processid;
+ select * from dish;
+ 
+ #details about enrollment
+SELECT 
+    user_name, status, certificate_name
+FROM
+    enrollment
+        INNER JOIN
+    user ON user.user_id = enrollment.user_user_id
+        INNER JOIN
+    certificate ON enrollment.certificate_certificate_id = certificate.certificate_id
+ORDER BY user_name;
+
+#how many certificates user enrolled
+SELECT 
+    user_name, COUNT(certificate_name) numbers
+FROM
+    enrollment
+        INNER JOIN
+    user ON user.user_id = enrollment.user_user_id
+        INNER JOIN
+    certificate ON enrollment.certificate_certificate_id = certificate.certificate_id
+GROUP BY user_name;
+
+#show reminder during cooking process
+select * from reminder;
+SELECT 
+    sequence, reminder_start, reminder_des
+FROM
+    reminder
+    inner join recipe on recipe.recipe_id=reminder.recipe_recipe_id
+    where recipe_name='kung pao'
+ORDER BY sequence;
+
+Cooking Process
+
+Stores procedure 1: add accomplishment
+
+DROP PROCEDURE IF EXISTS addacc;
+DELIMITER //
+CREATE PROCEDURE addacc(
+IN userid INT, 
+IN acname VARCHAR(100),
+IN acprocess VARCHAR(20),
+IN prtime INT,
+IN initemp INT,
+OUT aid INT)
+
+BEGIN
+
+INSERT IGNORE INTO accomplishment(user_user_id,accname,date) values(userid,acname,current_date());
+
+SELECT 
+    accid
+INTO aid FROM
+    accomplishment a
+WHERE
+    a.user_user_id = userid
+        AND a.accname = acname;
+
+INSERT INTO accomplishment_has_process(accomplishment_accid,process_processid,time,initialtemp) 
+SELECT 
+    aid, processid, prtime, initemp
+FROM
+    process p
+WHERE
+    p.processname = acprocess;
+SELECT aid;
+END//
+DELIMITER ;
+
+Stored procedure 2: add ingredients
+
+DROP PROCEDURE IF EXISTS addingr;
+DELIMITER //
+CREATE PROCEDURE addingr(
+IN accid INT,
+IN ingrname VARCHAR(100),
+IN ingrwgt FLOAT,
+IN ingrsize VARCHAR(10))
+
+BEGIN
+
+
+INSERT INTO accomplishment_has_ingredient
+(accomplishment_accid,ingredient_ingrid,ingredient_ingrtypeid,weight,size)
+SELECT 
+    accid, ingrid, ingrtypeid, ingrwgt, ingrsize
+FROM
+    ingredient i
+WHERE
+    i.ingrname = ingrname;
+
+END//
+DELIMITER ; 
+
+Stored procedure 3: gradeflavor
+
+DROP PROCEDURE IF EXISTS gradeflavor;
+DELIMITER //
+CREATE PROCEDURE gradeflavor(
+IN accompid INT, 
+OUT flagrade FLOAT,
+OUT flalevel VARCHAR(10), 
+OUT comment VARCHAR(200))
+BEGIN
+
+DECLARE accsalty FLOAT;
+DECLARE accsweet FLOAT;
+DECLARE accsour  FLOAT;
+DECLARE accspicy FLOAT;
+DECLARE accthick FLOAT;
+DECLARE saltyscore FLOAT;
+DECLARE sweetscore FLOAT;
+DECLARE sourscore FLOAT;
+DECLARE spicyscore FLOAT;
+DECLARE thickscore FLOAT;
+DECLARE saltycom VARCHAR(100);
+DECLARE sweetcom VARCHAR(100);
+DECLARE sourcom VARCHAR(100);
+DECLARE spicycom VARCHAR(100);
+DECLARE thickcom VARCHAR(100);
+
+SELECT 
+    SUM(salty * weight) / SUM(weight)
+INTO accsalty FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    SUM(sweet * weight) / SUM(weight)
+INTO accsweet FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    SUM(sour * weight) / SUM(weight)
+INTO accsour FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(spicy * weight) / SUM(weight)
+INTO accspicy FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(thick * weight) / SUM(weight)
+INTO accthick FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+if (accsalty>=0 AND accsalty<= 100) then
+	set saltyscore = 0; set saltycom='no salt,';
+elseif (accsalty>100 AND accsalty<=300) then
+	set saltyscore =0.05*accsalty-5; set saltycom='not enought salt,';
+elseif (accsalty>300 AND accsalty<=700) then
+	set saltyscore=10; set saltycom='perfectly salty!';
+elseif (accsalty>700 AND accsalty<=1000) then
+	set saltyscore=(-1/30)*(accsalty-1000); set saltycom='a little oversalty,';
+else 
+	set saltyscore=0; set saltycom='tooooooo salty!';
+
+end if;
+
+if (accsweet>=0 AND accsweet<=3) then
+	set sweetscore=(4/3)*(accsweet+9/2); set sweetcom='slightly sweet,';
+elseif (accsweet>3 AND accsweet<=10) then
+	set sweetscore=10; set sweetcom='perfectly sweet!';
+elseif (accsweet>10 AND accsweet<=20) then
+	set sweetscore=(-1)*accsweet+20; set sweetcom='slightly oversweet,';
+else 
+	set sweetscore=0; set sweetcom='oversweet!';
+end if;
+
+if (accsour>=0 AND accsour<=30) then
+	set sourscore=0.1*(accsour+70); set sourcom='slightly sour,';
+elseif (accsour>30 AND accsour<=60) then
+	set sourscore=10; set sourcom='perfectly sour,';
+elseif (accsour>60 AND accsour<=90) then
+	set sourscore=(-1/3)*(accsour-90); set sourcom='slightly oversour,';
+else
+	set sourscore=0; set sourcom='oversour!';
+end if;
+
+if (accspicy>=0 AND accspicy<=30) then
+	set spicyscore=0.1*(accspicy+70); set spicycom='slightly spicy,';
+elseif (accspicy>30 AND accspicy<=60) then
+	set spicyscore=10; set spicycom='perfectly spicy,';
+elseif (accspicy>60 AND accspicy<=90) then
+	set spicyscore=(-1/3)*(accspicy-90); set spicycom='slightly oversour,';
+else
+	set spicyscore=0; set spicycom='oversour!';
+end if;
+
+if (accthick>=0 AND accthick<=5) then
+	set thickscore=accthick+5; set thickcom='freshness.';
+elseif (accthick>5 AND accthick<=15) then
+	set thickscore=10; set thickcom='perfect thickness.';
+elseif (accthick>15 AND accthick<=25) then
+	set thickscore=(-1)*accthick+25; set thickcom='slightly oily.';
+else
+	set thickscore=0; set thickcom='too oily!';
+end if;
+
+set flagrade=0.6*saltyscore+0.2*sweetscore+0.1*thickscore+0.05*spicyscore+0.05*sourscore;
+set comment=concat(saltycom,' ', sweetcom,' ' ,sourcom,' ',spicycom, ' ',thickcom);
+
+if (flagrade>=0 AND flagrade<=2) then
+	set flalevel='E';
+elseif (flagrade>2 AND flagrade<=4) then
+	set flalevel='D';
+elseif (flagrade>4 AND flagrade<6) then
+	set flalevel='C';
+elseif (flagrade>6 AND flagrade<=8) then
+	set flalevel='B';
+else 	
+	set flalevel='A';
+END IF;
+
+END //
+
+DELIMITER ;
+
+Stored procedure 4: grade nutrition
+
+DROP PROCEDURE IF EXISTS gradenutr;
+DELIMITER //
+CREATE PROCEDURE gradenutr( 
+IN accompid INT,
+OUT nutrgrade FLOAT,
+OUT nutrlevel VARCHAR(10),
+OUT nutrcomment VARCHAR(100))
+
+BEGIN
+
+DECLARE accfat FLOAT;
+DECLARE accsat_fat FLOAT;
+DECLARE accchole FLOAT;
+DECLARE accsodium FLOAT;
+DECLARE acccarbhy FLOAT;
+DECLARE accfiber FLOAT;
+DECLARE accsugar FLOAT;
+DECLARE accprotein FLOAT;
+DECLARE accvma FLOAT;
+DECLARE accvmc FLOAT;
+DECLARE acccal FLOAT;
+DECLARE acciron FLOAT;
+
+
+SELECT 
+    SUM(weight * Fat) / SUM(weight)
+INTO accfat FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    SUM(weight * fat_sat) / SUM(weight)
+INTO accsat_fat FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    SUM(weight * chol) / SUM(weight)
+INTO accchole FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * sodium) / SUM(weight)
+INTO accsodium FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * cbhy) / SUM(weight)
+INTO acccarbhy FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * fiber) / SUM(weight)
+INTO accfiber FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * sugar) / SUM(weight)
+INTO accsugar FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * protein) / SUM(weight)
+INTO accprotein FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * va) / 5000
+INTO accvma FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * vc) / 60
+INTO accvmc FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * calcium) / 1000
+INTO acccal FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+SELECT 
+    SUM(weight * iron) / 18
+INTO acciron FROM
+    accomplishment_has_ingredient ahi
+        INNER JOIN
+    ingredient i ON ahi.ingredient_ingrid = i.ingrid
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+set nutrgrade=5.710-0.0538*accfat-0.423*accsat_fat-0.00398*accchole-0.00254*accsodium
+-0.0300*acccarbhy+0.561*accfiber-0.0245*accsugar+0.123*accprotein+0.00562*accvma
++0.0137*accvmc+0.0685*acccal-0.0186*acciron;
+
+if (nutrgrade>=0 AND nutrgrade<=2) then
+	set nutrlevel='E';set nutrcomment='unhealthy.';
+elseif (nutrgrade>2 AND nutrgrade<=4) then
+	set nutrlevel='D';set nutrcomment='not very healthy.';
+elseif (nutrgrade>4 AND nutrgrade<=6) then
+	set nutrlevel='C'; set nutrcomment='fairly healthy.';
+elseif (nutrgrade>6 AND nutrgrade<=8) then
+	set nutrlevel='B';set nutrcomment='healthy.';
+else
+	set nutrlevel='A';set nutrcomment='very healthy!';
+END if;
+
+END //
+
+DELIMITER ;
+
+Stored procedure 5: grade texture 
+
+DROP PROCEDURE IF EXISTS gradetexture;
+DELIMITER //
+CREATE PROCEDURE gradetexture(
+IN accompid INT,
+OUT texgrade FLOAT,
+OUT texlevel VARCHAR(10),
+OUT texcomment VARCHAR(100))
+
+BEGIN
+
+DECLARE accproc VARCHAR(20);
+DECLARE acctime INT;
+DECLARE initemp INT;
+DECLARE p INT;
+DECLARE t INT;
+DECLARE s INT;
+DECLARE iniscore FLOAT;
+
+SELECT 
+    AVG(CASE processname
+        WHEN 'boil' THEN 1.5
+        WHEN 'steam' THEN 1
+        WHEN 'bake' THEN 2
+        WHEN 'fry' THEN 3
+        WHEN 'grill' THEN 3
+        ELSE 0
+    END)
+INTO p FROM
+    accomplishment a
+        INNER JOIN
+    accomplishment_has_process ahp ON a.accid = ahp.accomplishment_accid
+        INNER JOIN
+    process p ON ahp.process_processid = p.processid
+WHERE
+    a.accid = accompid
+GROUP BY accid;
+
+
+SELECT 
+    SUM(time)
+INTO acctime FROM
+    accomplishment_has_process
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    AVG(initialtemp)
+INTO initemp FROM
+    accomplishment_has_process
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    SUM(weight * (CASE size
+        WHEN 'S' THEN 3
+        WHEN 'M' THEN 2
+        WHEN 'L' THEN 1
+    END)) / SUM(weight)
+INTO s FROM
+    accomplishment_has_ingredient
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SELECT 
+    SUM(weight * (CASE
+        WHEN ingredient_ingrtypeid = 10 THEN 1
+        WHEN ingredient_ingrtypeid = 13 THEN 1
+        WHEN ingredient_ingrtypeid = 17 THEN 1
+        WHEN ingredient_ingrtypeid = 5 THEN 2
+        WHEN ingredient_ingrtypeid = 15 THEN 2
+        ELSE 3
+    END)) / SUM(weight)
+INTO t FROM
+    accomplishment_has_ingredient
+WHERE
+    accomplishment_accid = accompid
+GROUP BY accomplishment_accid;
+
+SET iniscore=(initemp/100)*p*t*s*0.3*acctime;
+
+IF
+	 iniscore>=0 AND iniscore<=10 THEN
+	SET texgrade=0; SET texcomment='raw';
+	ELSEIF iniscore>10 AND iniscore<=25 THEN
+	SET texgrade=(8/15)*(iniscore-10); SET texcomment='not raw but undercooked';
+	ELSEIF iniscore>25 AND iniscore<=30 THEN
+	SET texgrade=(2/5)*(iniscore-5); SET texcomment='wellcooked!';
+	ELSEIF iniscore>30 AND iniscore<=35 THEN
+	SET texgrade=(-2/5)*iniscore+22; SET texcomment='Slightly overcooked';
+	ELSEIF iniscore>35 AND iniscore<50 THEN
+	SET texgrade=(-8/15)*iniscore+(80/3); SET texcomment='charcoal';
+	ELSE
+	SET texgrade=0; SET texcomment='Please practice more!';
+END IF;
+
+IF	
+	 texgrade>=0 AND texgrade<=2 THEN
+	SET texlevel='E';
+	ELSEIF texgrade>2 AND texgrade<=4 THEN
+	SET texlevel='D';
+	ELSEIF texgrade>4 AND texgrade<=6 THEN
+	SET texlevel='C';
+	ELSEIF texgrade>6 AND texgrade<=8 THEN
+	SET texlevel='B';
+	ELSEIF texgrade>8 AND texgrade<=10 THEN
+	SET texlevel='A';
+END IF;
+
+END //
+DELIMITER ;
+
+Stored procedure 6: total grading
+
+DROP PROCEDURE IF EXISTS totgrade;
+DELIMITER //
+CREATE PROCEDURE totgrade(
+IN accompid INT)
+
+BEGIN
+
+DECLARE ovacomment VARCHAR(100);
+DECLARE grade FLOAT;
+DECLARE totlevel VARCHAR(10);
+DECLARE totcomment VARCHAR(1000);
+
+CALL gradeflavor(accompid,@flagrade,@flalevel,@flacomment);
+CALL gradenutr(accompid,@nutrgrade,@nutrlevel,@nutrcomment);
+CALL gradetexture(accompid,@texgrade,@texlevel,@texcomment);
+
+SET grade= 0.5*@flagrade+0.15*@nutrgrade+0.35*@texgrade;
+
+IF grade>=0 AND grade<=2 THEN
+	SET totlevel='E'; SET ovacomment='Bad accomplishment.';
+ELSEIF grade>2 AND grade<=4 THEN
+	SET totlevel='D'; SET ovacomment='Not very good.';
+ELSEIF grade>4 AND grade<=6 THEN
+	SET totlevel='C'; SET ovacomment='fairly good.';
+ELSEIF grade>6 AND grade<=8 THEN
+	SET totlevel='D'; SET ovacomment='Pretty good.';
+ELSE
+	SET totlevel='A'; SET ovacomment='Excellent!';
+END IF;
+
+SET totcomment=concat(ovacomment,' ',@flacomment,' ',@nutrcomment,' ',@texcomment);
+
+UPDATE accomplishment a
+SET totgrade=grade, level=totlevel, comment=totcomment, flavor=@flagrade, nutr=@nutrgrade, texture=@texgrade
+WHERE a.accid=accompid; 
+
+SELECT * FROM accomplishment a WHERE a.accid=accompid;
+
+END //
+DELIMITER ; 
+
+View of accomplishment information:
+
+CREATE VIEW accinfo AS
+    SELECT 
+        accid,
+        user_id,
+        accname,
+        date,
+        flavor,
+        nutr,
+        texture,
+        level,
+        comment,
+        ingrname,
+        ingrtypename,
+        weight,
+        size,
+        processname,
+        time,
+        initialtemp
+    FROM
+        user u
+            INNER JOIN
+        accomplishment a ON u.user_id = a.user_user_id
+            INNER JOIN
+        accomplishment_has_process ahp ON a.accid = ahp.accomplishment_accid
+            INNER JOIN
+        process p ON ahp.process_processid = p.processid
+            INNER JOIN
+        accomplishment_has_ingredient ahi ON a.accid = ahi.accomplishment_accid
+            INNER JOIN
+        ingredient i ON i.ingrid = ahi.ingredient_ingrid
+    ORDER BY accid;
+
+Trigger: documenting information of insert of accomplishment 
+
+CREATE DEFINER = CURRENT_USER TRIGGER `mydb`.`accomplishment_AFTER_INSERT` AFTER INSERT ON `accomplishment` FOR EACH ROW
+BEGIN
+INSERT INTO acclog
+    SET action = 'insert',
+     accid = new.accid,
+        accname = new.accname,
+        changedate = NOW();
+END
+
+Trigger: documenting information of update of accomplishment
+
+CREATE DEFINER = CURRENT_USER TRIGGER `mydb`.`accomplishment_AFTER_UPDATE` AFTER UPDATE ON `accomplishment` FOR EACH ROW
+BEGIN
+    INSERT INTO acclog
+    SET action = 'update',
+     accid = OLD.accid,
+        accname = OLD.accname,
+        totgrade=NEW.totgrade,
+        level=NEW.level,
+        changedate = NOW();
+END
+
+
+Game mode
+
+Store Procedure 1:
+
+DROP PROCEDURE IF EXISTS showallgame;
+DELIMITER //
+CREATE PROCEDURE showallgame(IN userid INT)
+begin
+SELECT game_game_id,`game-totalGrade`
+FROM gamezone
+WHERE user_user_id=userid;
+end //
+DELIMITER ;
+call showallgame(1);
+
+Store Procedure 2:
+
+DROP PROCEDURE IF EXISTS showgamedetail;
+DELIMITER //
+CREATE PROCEDURE showgamedetail(IN gameid INT)
+begin
+SELECT *
+FROM game
+WHERE game_id=gameid and statuss=true;
+end //
+DELIMITER ;
+call showgamedetail(01);
+
+Store Procedure 3:
+
+use mydb;
+DROP PROCEDURE IF EXISTS gradesituatio;
+DELIMITER //
+CREATE PROCEDURE gradesituation(IN gameid INT)
+begin
+
+SELECT game.game_data_game_progress,accomplishment.totgrade
+FROM game
+inner join
+accomplishment on game.accomplishment_accid=accomplishment.accid
+where game.game_id=gameid;
+
+end //
+DELIMITER ;
+call gradesituatio(3);
+
+Store procedure 4:
+
+use mydb;
+DROP PROCEDURE IF EXISTS showgameprocess;
+DELIMITER //
+CREATE PROCEDURE showgameprocess(IN processid INT)
+begin
+SELECT game_background,dish_id
+FROM game_data
+WHERE game_progress=processid;
+end //
+DELIMITER ;
+call showgameprocess(1);
+
+Store Procedure 5:
+
+use mydb;
+DROP PROCEDURE IF EXISTS totalgrade;
+DELIMITER //
+CREATE PROCEDURE totalgrade(IN gameid INT)
+begin
+select sum(totgrade) AS totalgradee
+from(
+SELECT game.game_data_game_progress,accomplishment.totgrade
+FROM game
+inner join
+accomplishment on game.accomplishment_accid=accomplishment.accid
+where game.game_id=gameid
+) as result;
+
+end //
+DELIMITER ;
+call totalgrade(3);
+
+
+View 1:
+
+DROP view IF EXISTS ranking;
+CREATE VIEW ranking AS
+    SELECT 
+        game_game_id,`game-totalGrade`
+    FROM
+        gamezone
+
+        order by
+        `game-totalGrade` DESC
+        limit 0,3;
+        
+        select * from ranking;
+
+Trigger 1:
+
+DELIMITER //
+CREATE DEFINER = CURRENT_USER TRIGGER `mydb`.`game_AFTER_UPDATE` AFTER UPDATE ON `game` FOR EACH ROW
+BEGIN
+
+update gamezone
+SET game_totalGrade=(select sum(totgrade) 
+from(
+SELECT game.game_data_game_progress,accomplishment.totgrade
+FROM game
+inner join
+accomplishment on game.accomplishment_accid=accomplishment.accid
+where game.game_id=NEW.game_id
+) as result)
+where gamezone.game_game_id=NEW.game_id;
+
+END//
+DELIMITER ;
+
+Social Network 
+
+Friend searching:
+
+#find all friends for Haoqi
+drop procedure if exists friend_search;
+Delimiter //
+create procedure friend_search(in p_name varchar(45)) 
+begin
+Select user_name
+from user 
+where user_id=all(
+select friendid from friend_list 
+where user_id= (select user_id from
+user where user_name=p_name));
+
+end //
+delimiter ;
+call friend_search('Haoqi'); 
+
+Show all the dish for specific user
+
+#find all dishes for one users
+drop procedure if exists show_dishes;
+Delimiter //
+create procedure show_dishes(in p_name varchar(45)) 
+begin
+Select user_name,dish_name
+from user u
+inner join 
+accomplishment a on u.user_id=a.user_user_id
+left join
+dish d on a.dish_dish_id=d.dish_id
+where user_name=p_name;
+
+end //
+delimiter ;
+call show_dishes('Haoqi'); 
+
+Trigger for user’s change
+
+#delete enrollment if the certification is cancelled
+drop trigger if exists enrollment_delete;
+DELIMITER //
+create trigger enrollment_delete
+after delete on certification
+for each row
+begin 
+ delete from enrollment where certification_certification_id = 
+ old.certification_id;
+end;
+//
+Delimiter;
+#Sync game update
+drop trigger if exists game_update;
+DELIMITER //
+create
+ trigger game_update
+ before update
+ on game
+ for each row
+ begin
+ update gamezone set game_game_id=new.game_id
+end//
+delimiter ; 
+
+Search for user by name
+
+SELECT 
+    *
+FROM
+    user
+WHERE
+    user_name LIKE '%ki%';
+# search for user by id
+SELECT 
+    *
+FROM
+    user
+WHERE
+    user_id=3;
+  
+View Users whose zone has like over 1000
+
+SELECT 
+	user.user_id,user.user_name,socialplatform.description,socialplatform.like
+FROM
+    socialplatform
+        INNER JOIN 
+        user ON  user.user_id=socialplatform.user_user_id
+WHERE
+    socialplatform.like > 1000 
+order by socialplatform.like desc;
+
+View user's certificated passed 
+
+SELECT 
+    certificate_name, enrollment.status
+FROM
+    enrollment
+        INNER JOIN
+    user ON user.user_id = enrollment.user_user_id
+        INNER JOIN
+    certificate ON certificate.certificate_id = enrollment.certificate_certificate_id
+WHERE
+    enrollment.status = 'pass'
+        AND user.user_id = 3;
+
